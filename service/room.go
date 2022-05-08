@@ -1,97 +1,121 @@
 package service
 
 import (
-	"encoding/json"
 	"errors"
-	"log"
+
+	"github.com/Mrtoy/dtcg-server/server"
 )
 
-type Room struct {
-	ID      string
-	Players []*Player
-	Game    *Game
+type RoomManager struct {
+	RoomPlayerLimit int
+	Rooms           map[string]*Room
+	PlayerInRoom    map[int]*Room
+	GameManager     *GameManager
 }
 
-func (r *Room) Join(p *Player) error {
-	if len(r.Players) >= 2 {
-		return errors.New("room is full")
+func NewRoomManager() *RoomManager {
+	return &RoomManager{
+		Rooms:           make(map[string]*Room),
+		PlayerInRoom:    make(map[int]*Room),
+		RoomPlayerLimit: 2,
 	}
-	p.Room = r
-	r.Players = append(r.Players, p)
-	r.BroadCastRoomUpdate()
-	return nil
 }
 
-func (r *Room) Leave(p *Player) {
-	for i, player := range r.Players {
+type Room struct {
+	ID         string
+	Players    []*Player
+	ReadyState map[int]bool
+}
+
+func NewRoom() *Room {
+	return &Room{
+		Players:    []*Player{},
+		ReadyState: make(map[int]bool),
+	}
+}
+
+func (r *RoomManager) Join(pack *server.Package, sess *server.Session) {
+	player := sess.Data["player"].(*Player)
+	var req struct {
+		RoomID string
+	}
+	err := pack.Unmarshal(&req)
+	if err != nil {
+		sess.Error(err)
+		return
+	}
+	room := r.Rooms[req.RoomID]
+	if room == nil {
+		room = NewRoom()
+		r.Rooms[req.RoomID] = room
+	}
+	if len(room.Players) >= r.RoomPlayerLimit {
+		sess.Error(errors.New("room is full"))
+		return
+	}
+	r.PlayerInRoom[player.Session.ID] = room
+	room.Players = append(room.Players, player)
+	room.BroadCastRoomUpdate()
+}
+
+func (r *RoomManager) Leave(pack *server.Package, sess *server.Session) {
+	player := sess.Data["player"].(*Player)
+	room, ok := r.PlayerInRoom[player.Session.ID]
+	if !ok {
+		return
+	}
+	room.ReadyState[player.Session.ID] = false
+	delete(r.PlayerInRoom, player.Session.ID)
+	for i, p := range room.Players {
 		if player == p {
-			r.Players = append(r.Players[:i], r.Players[i+1:]...)
-			if r.Game != nil {
-				r.Game.Players = r.Players
-				r.BroadCastRoomUpdate()
-				r.Game.WinPlayer = p.Opponent
-				r.Game.End()
-			}
+			room.Players = append(room.Players[:i], room.Players[i+1:]...)
 		}
 	}
+	room.BroadCastRoomUpdate()
 }
 
-func (r *Room) HandleEvent(e *Event) (err error) {
-	switch e.Type {
-	case "room:ready":
-		err = r.Ready(e)
-	case "room:leave":
-		r.Leave(e.Target)
+func (r *RoomManager) Ready(pack *server.Package, sess *server.Session) {
+	player := sess.Data["player"].(*Player)
+	room := r.PlayerInRoom[player.Session.ID]
+	if room == nil {
+		sess.Error(errors.New("you are not in a room"))
+		return
 	}
-	return
+	readyCount := 0
+	room.ReadyState[player.Session.ID] = true
+	for _, ready := range room.ReadyState {
+		if ready {
+			readyCount++
+		}
+	}
+	room.BroadCastRoomUpdate()
+	if readyCount == r.RoomPlayerLimit {
+		r.GameManager.StartGame(room)
+	}
 }
 
-func (r *Room) BroadCastEvent(e *Event) {
+func (r *Room) BroadCast(tp string, data any) {
 	for _, p := range r.Players {
-		p.WriteChan <- e
+		p.Session.Send(tp, data)
 	}
 }
 
 func (r *Room) BroadCastRoomUpdate() {
-	r.BroadCastEvent(&Event{
-		Type: "room:update-user",
-		Data: r.Players,
+	type UserInfo struct {
+		Name  string
+		ID    int
+		Ready bool
+	}
+	var players []*UserInfo
+	for _, p := range r.Players {
+		players = append(players, &UserInfo{
+			Name:  p.Name,
+			ID:    p.Session.ID,
+			Ready: r.ReadyState[p.Session.ID],
+		})
+	}
+	r.BroadCast("room:info", map[string]any{
+		"id":      r.ID,
+		"players": players,
 	})
-}
-
-func (r *Room) Ready(event *Event) error {
-	var req struct {
-		Data struct {
-			Ready bool   `json:"ready"`
-			Deck  []Card `json:"deck"`
-		} `json:"data"`
-	}
-	err := json.Unmarshal(event.OriginSource, &req)
-	if err != nil {
-		return err
-	}
-	if req.Data.Ready {
-		err := event.Target.UseDeck(req.Data.Deck)
-		if err != nil {
-			return err
-		}
-	}
-	event.Target.Ready = req.Data.Ready
-	readyCount := 0
-	for _, p := range event.Target.Room.Players {
-		if p.Ready {
-			readyCount++
-		}
-	}
-	if readyCount == 2 {
-		go r.StartGame()
-	}
-	return nil
-}
-
-func (r *Room) StartGame() {
-	log.Println("start game")
-	r.Game = NewGame()
-	r.Game.Players = r.Players
-	r.Game.Start()
 }

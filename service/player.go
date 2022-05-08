@@ -1,37 +1,42 @@
 package service
 
-import "errors"
+import (
+	"errors"
 
-type Event struct {
-	Type         string      `json:"type"`
-	Target       *Player     `json:"target"`
-	Data         interface{} `json:"data"`
-	OriginSource []byte      `json:"-"`
-}
+	"github.com/Mrtoy/dtcg-server/server"
+)
 
 type Player struct {
-	ID         int
+	Session    *server.Session
 	Name       string
-	Ready      bool
-	Deck       []Card      `json:"-"`
-	EggDeck    []Card      `json:"-"`
-	Opponent   *Player     `json:"-"`
-	ReadChan   chan *Event `json:"-"`
-	WriteChan  chan *Event `json:"-"`
-	Room       *Room       `json:"-"`
-	PlayerArea *PlayerArea `json:"-"`
+	OriginDeck []Card
+	Deck       []Card
+	EggDeck    []Card
+	Opponent   *Player
+	PlayerArea *PlayerArea
 }
 
-var playerID int = 0
-
-func NewPlayer() *Player {
-	playerID++
-	p := &Player{
-		ReadChan:  make(chan *Event),
-		WriteChan: make(chan *Event),
-		ID:        playerID,
+func SetPlayer(sess *server.Session) {
+	player := &Player{
+		Session: sess,
 	}
-	return p
+	sess.Data["player"] = player
+}
+
+func UpdatePlayerInfo(pack *server.Package, sess *server.Session) {
+	player := sess.Data["player"].(*Player)
+	var info Player
+	err := pack.Unmarshal(&info)
+	if err != nil {
+		sess.Error(err)
+		return
+	}
+	player.Name = info.Name
+	err = player.UseDeck(info.OriginDeck)
+	if err != nil {
+		sess.Error(err)
+		return
+	}
 }
 
 func (p *Player) UseDeck(deck []Card) error {
