@@ -9,7 +9,7 @@ import (
 )
 
 //go:embed response.json
-var buf []byte
+var cardDetailsBuf []byte
 
 var details map[string]*CardDetail
 
@@ -23,7 +23,7 @@ func GetCardDetails() map[string]*CardDetail {
 			List []*CardDetail `json:"list"`
 		} `json:"data"`
 	}
-	json.Unmarshal(buf, &res)
+	json.Unmarshal(cardDetailsBuf, &res)
 	m := make(map[string]*CardDetail)
 	for _, v := range res.Data.List {
 		m[v.Serial] = v
@@ -32,50 +32,90 @@ func GetCardDetails() map[string]*CardDetail {
 }
 
 type CardDetail struct {
-	Serial         string   `json:"serial"`
-	Type           string   `json:"type"`
-	Name           string   `json:"name"`
-	Color          []string `json:"color"`
-	Effect         string   `json:"effect"`
-	EvoCoverEffect string   `json:"evo_cover_effect"`
-	SecurityEffect string   `json:"security_effect"`
-	Level          string   `json:"level"`
-	Cost           string   `json:"cost"`
-	EvoCost        string   `json:"cost_1"`
-	DP             string   `json:"dp"`
-	Attribute      string   `json:"attribute"`
-	Class          []string `json:"class"`
+	Serial         string
+	Type           string
+	Name           string
+	Color          []string
+	Effect         string
+	EvoCoverEffect string
+	SecurityEffect string
+	Level          string
+	Cost           string
+	EvoCost        string
+	DP             string
+	Attribute      string
+	Class          []string
 	Images         []struct {
-		ImgPath   string `json:"img_path"`
-		ThumbPath string `json:"thumb_path"`
-	} `json:"images"`
+		ImgPath   string
+		ThumbPath string
+	}
 }
 
-type Card string
-
-func (c Card) GetDetail() *CardDetail {
-	return details[string(c)]
+type Card struct {
+	ID     int
+	Serial string
 }
 
-func ShuffleCards(list []Card) {
+var globalCardID int = 0
+
+func NewCard(s string) *Card {
+	globalCardID++
+	return &Card{
+		ID:     globalCardID,
+		Serial: s,
+	}
+}
+
+func GetDetail(serial string) *CardDetail {
+	return details[serial]
+}
+
+func ShuffleCards(list []*Card) {
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
 }
 
 type CardMonster struct {
-	List  []Card
+	ID    int
+	List  []*Card
 	Sleep bool
 }
 
-func CreateCardMonster(card Card) *CardMonster {
+func NewCardMonster() *CardMonster {
+	globalCardID++
 	return &CardMonster{
-		List: []Card{card},
+		ID: globalCardID,
 	}
 }
 
-func MoveCards(src []Card, dist []Card, num int) ([]Card, []Card, error) {
+func PickList[T comparable](src []T, num int) ([]T, []T, error) {
 	if len(src) < num {
 		return nil, nil, errors.New("not enough cards")
 	}
+	return src[num:], src[:len(src)-num], nil
+}
+
+func AppendList[T comparable](src []T, dst []T) []T {
+	return append(dst, src...)
+}
+
+func MoveList[T comparable](src []T, dist []T, num int) ([]T, []T, error) {
+	if len(src) < num {
+		return nil, nil, errors.New("not enough")
+	}
 	return src[:len(src)-num], append(dist, src[len(src)-num:]...), nil
+}
+
+func DifferenceList[T comparable](a, b []T) []T {
+	mb := make(map[T]struct{}, len(b))
+	for _, x := range b {
+		mb[x] = struct{}{}
+	}
+	var diff []T
+	for _, x := range a {
+		if _, found := mb[x]; !found {
+			diff = append(diff, x)
+		}
+	}
+	return diff
 }

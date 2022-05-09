@@ -25,8 +25,8 @@ func main() {
 		pack.Unmarshal(&res)
 		sess.ID = res.ID
 		sess.Send("player:update-info", &service.Player{
-			Name: "toy",
-			Deck: prepareCard(),
+			Name:       "toy",
+			OriginDeck: prepareCards(),
 		})
 		sess.Send("room:join", map[string]any{"RoomID": "1"})
 		sess.Send("room:ready", nil)
@@ -67,8 +67,8 @@ func main() {
 	sess.Receive()
 }
 
-func prepareCard() []service.Card {
-	var deck []service.Card
+func prepareCards() []string {
+	var deck []string
 	json.Unmarshal([]byte(deckInfo), &deck)
 	deck = deck[1:]
 	return deck
