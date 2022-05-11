@@ -12,9 +12,9 @@ func NewGameController() *GameController {
 	return &GameController{}
 }
 
-func StartGame(room *app.Room) {
-	g := app.NewGame(room)
-	for _, p := range room.Players {
+func StartGame(players []*app.Player) {
+	g := app.NewGame(players)
+	for _, p := range players {
 		p.Session.Data["game"] = g
 	}
 	go g.Start()
@@ -23,10 +23,11 @@ func StartGame(room *app.Room) {
 func (m *GameController) ExitGame(pack *service.Package, sess *service.Session) {
 	player := sess.Data["player"].(*app.Player)
 	g := sess.Data["game"].(*app.Game)
-	if g != nil {
-		g.WinPlayer = player.Opponent
-		g.End()
+	if g == nil {
+		return
 	}
+	g.WinPlayer = player.Opponent
+	g.End()
 }
 
 func (m *GameController) Born(pack *service.Package, sess *service.Session) {

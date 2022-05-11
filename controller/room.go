@@ -50,12 +50,8 @@ func (r *RoomController) Leave(pack *service.Package, sess *service.Session) {
 	if room == nil {
 		return
 	}
-	room.ReadyState[player.Session.ID] = false
-	for i, p := range room.Players {
-		if player == p {
-			room.Players = append(room.Players[:i], room.Players[i+1:]...)
-		}
-	}
+	delete(room.ReadyState, player.Session.ID)
+	room.Players = app.ListRemove(room.Players, player)
 	room.BroadcastRoomInfo()
 }
 
@@ -75,6 +71,6 @@ func (r *RoomController) Ready(pack *service.Package, sess *service.Session) {
 	}
 	room.BroadcastRoomInfo()
 	if readyCount == r.RoomPlayerLimit {
-		StartGame(room)
+		StartGame(room.Players)
 	}
 }

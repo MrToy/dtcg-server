@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -21,7 +22,7 @@ type PlayerArea struct {
 }
 
 type Game struct {
-	*Room            `json:"-"`
+	Players          []*Player
 	PlayerAreas      map[int]*PlayerArea
 	MemoryBank       int //内存条
 	CurrentPlayer    *Player
@@ -34,21 +35,32 @@ type Game struct {
 	CurrentTurnIndex int
 }
 
-func NewGame(room *Room) *Game {
+func NewGame(players []*Player) *Game {
+	gamePlayers := make([]*Player, len(players))
+	copy(gamePlayers, players)
 	g := &Game{
-		Room:        room,
+		Players:     gamePlayers,
 		MemoryBank:  0,
 		TurnChan:    make(chan bool),
 		EndChan:     make(chan bool),
 		PlayerAreas: make(map[int]*PlayerArea),
 	}
-	for _, player := range room.Players {
+	for _, player := range g.Players {
 		area := &PlayerArea{}
 		g.PlayerAreas[player.Session.ID] = area
 	}
 	g.Players[0].Opponent = g.Players[1]
 	g.Players[1].Opponent = g.Players[0]
 	return g
+}
+
+func (g *Game) Broadcast(tp string, data any) {
+	for _, p := range g.Players {
+		err := p.Session.Send(tp, data)
+		if err != nil {
+			log.Println("send error:", err)
+		}
+	}
 }
 
 func (g *Game) BroadcastGameInfo() {
@@ -71,7 +83,7 @@ func (g *Game) Start() {
 	g.BroadcastGameInfo()
 
 	for {
-		g.OnTurnChange()
+		go g.OnTurnChange()
 		select {
 		case <-g.EndChan:
 			return
@@ -82,7 +94,11 @@ func (g *Game) Start() {
 }
 
 func (g *Game) End() {
+	g.BroadcastGameInfo()
 	g.Broadcast("game:end", nil)
+	for _, p := range g.Players {
+		delete(p.Session.Data, "game")
+	}
 	g.EndChan <- true
 }
 
@@ -114,10 +130,6 @@ func (g *Game) SpliteOriginDeck(p *Player) {
 var turnList = []string{"active", "draw", "born", "main", "end"}
 
 func (g *Game) OnTurnChange() {
-	g.CurrentTurnIndex++
-	if g.CurrentTurnIndex > len(turnList)-1 {
-		g.CurrentTurnIndex = 0
-	}
 	g.CurrentTurn = turnList[g.CurrentTurnIndex]
 	g.BroadcastGameInfo()
 	switch g.CurrentTurn {
@@ -133,6 +145,10 @@ func (g *Game) OnTurnChange() {
 		g.OnTurnEnd()
 	}
 	g.BroadcastGameInfo()
+	g.CurrentTurnIndex++
+	if g.CurrentTurnIndex > len(turnList)-1 {
+		g.CurrentTurnIndex = 0
+	}
 }
 
 func (g *Game) OnTurnActive() {
