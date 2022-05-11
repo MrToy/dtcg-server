@@ -1,4 +1,4 @@
-package server
+package service
 
 import (
 	"log"
@@ -9,9 +9,9 @@ type SessionHandler func(pack *Package, sess *Session)
 
 type Session struct {
 	ID       int
-	conn     net.Conn
-	Handlers map[string]SessionHandler
-	Data     map[string]any
+	conn     net.Conn                  `json:"-"`
+	Handlers map[string]SessionHandler `json:"-"`
+	Data     map[string]any            `json:"-"`
 }
 
 var currentSessionID int = 0
@@ -61,9 +61,8 @@ func (s *Session) Receive() {
 		}
 		log.Printf("player %d -> %s", s.ID, pack.Type)
 		handler, ok := s.Handlers[string(pack.Type)]
-		if !ok {
-			continue
+		if ok {
+			handler(pack, s)
 		}
-		handler(pack, s)
 	}
 }

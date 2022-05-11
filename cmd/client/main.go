@@ -5,8 +5,9 @@ import (
 	"log"
 	"net"
 
-	"github.com/Mrtoy/dtcg-server/server"
+	"github.com/Mrtoy/dtcg-server/app"
 	"github.com/Mrtoy/dtcg-server/service"
+	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 const deckInfo = `["Exported from http://digimon.card.moe","ST3-07","ST3-07","ST3-07","ST3-12","ST3-12","ST3-12","ST3-12","BT1-063","BT1-063","BT1-052","BT1-052","BT1-052","BT1-052","BT1-048","BT1-048","BT1-048","BT1-048","BT1-005","BT1-006","BT1-006","BT1-006","BT1-006","BT1-057","BT1-057","BT1-102","BT1-102","BT2-033","BT2-033","BT2-033","BT2-099","BT2-038","BT2-038","BT2-038","BT2-038","BT2-034","BT2-034","BT2-034","BT2-039","BT2-039","BT2-098","BT2-098","BT1-060","BT1-060","BT1-060","BT1-060","BT1-087","BT1-087","BT1-087","BT2-041","BT2-041","BT2-041","BT2-041","BT2-087","BT2-087","BT2-087"]`
@@ -17,24 +18,25 @@ func main() {
 		panic(err)
 	}
 	defer conn.Close()
-	sess := server.NewSession(conn)
-	sess.On("connect", func(pack *server.Package, sess *server.Session) {
+	preStr := ""
+	sess := service.NewSession(conn)
+	sess.On("connect", func(pack *service.Package, sess *service.Session) {
 		var res struct {
 			ID int
 		}
 		pack.Unmarshal(&res)
 		sess.ID = res.ID
-		sess.Send("player:update-info", &service.Player{
+		sess.Send("player:update-info", &app.Player{
 			Name:       "toy",
 			OriginDeck: prepareCards(),
 		})
-		sess.Send("room:join", map[string]any{"RoomID": "1"})
+		sess.Send("room:join", map[string]any{"Name": "1"})
 		sess.Send("room:ready", nil)
 	})
-	sess.On("error", func(pack *server.Package, sess *server.Session) {
+	sess.On("error", func(pack *service.Package, sess *service.Session) {
 		log.Println(pack.String())
 	})
-	sess.On("confirm", func(pack *server.Package, sess *server.Session) {
+	sess.On("confirm", func(pack *service.Package, sess *service.Session) {
 		var res map[string]any
 		pack.Unmarshal(&res)
 		log.Println(res)
@@ -42,23 +44,25 @@ func main() {
 		sess.Send(method, "1")
 	})
 
-	sess.On("room:info", func(pack *server.Package, sess *server.Session) {
-		var res map[string]any
-		pack.Unmarshal(&res)
-		log.Println(res)
-	})
-
-	sess.On("game:start", func(pack *server.Package, sess *server.Session) {
-	})
-	sess.On("game:current-change", func(pack *server.Package, sess *server.Session) {
-		var res map[string]any
-		pack.Unmarshal(&res)
-		log.Println(res)
-	})
-	sess.On("game:turn-change", func(pack *server.Package, sess *server.Session) {
+	sess.On("room:info", func(pack *service.Package, sess *service.Session) {
 		log.Println(pack.String())
 	})
-	sess.On("game:end", func(pack *server.Package, sess *server.Session) {
+
+	sess.On("game:start", func(pack *service.Package, sess *service.Session) {
+	})
+	sess.On("game:current-change", func(pack *service.Package, sess *service.Session) {
+		var res map[string]any
+		pack.Unmarshal(&res)
+		log.Println(res)
+	})
+	sess.On("game:info-diff", func(pack *service.Package, sess *service.Session) {
+		dmp := diffmatchpatch.New()
+		patchs, _ := dmp.PatchFromText(pack.String())
+		str, _ := dmp.PatchApply(patchs, preStr)
+		preStr = str
+		log.Println(pack.String())
+	})
+	sess.On("game:end", func(pack *service.Package, sess *service.Session) {
 		var res map[string]any
 		pack.Unmarshal(&res)
 		log.Println(res)

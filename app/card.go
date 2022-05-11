@@ -1,4 +1,4 @@
-package service
+package app
 
 import (
 	_ "embed"
@@ -75,38 +75,42 @@ func ShuffleCards(list []*Card) {
 	rand.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
 }
 
-type CardMonster struct {
+type MonsterCard struct {
 	ID    int
 	List  []*Card
 	Sleep bool
 }
 
-func NewCardMonster() *CardMonster {
+func NewMonsterCard() *MonsterCard {
 	globalCardID++
-	return &CardMonster{
+	return &MonsterCard{
 		ID: globalCardID,
 	}
 }
 
-func PickList[T comparable](src []T, num int) ([]T, []T, error) {
+func ListPick[T comparable](src []T, num int) ([]T, []T, error) {
 	if len(src) < num {
 		return nil, nil, errors.New("not enough cards")
 	}
-	return src[num:], src[:len(src)-num], nil
+	return src[len(src)-num:], src[:len(src)-num], nil
 }
 
-func AppendList[T comparable](src []T, dst []T) []T {
+func ListRemoveAt[T comparable](list []T, index int) []T {
+	return append(list[:index], list[index+1:]...)
+}
+
+func ListAppend[T comparable](src []T, dst []T) []T {
 	return append(dst, src...)
 }
 
-func MoveList[T comparable](src []T, dist []T, num int) ([]T, []T, error) {
+func ListMove[T comparable](src []T, dist []T, num int) ([]T, []T, error) {
 	if len(src) < num {
 		return nil, nil, errors.New("not enough")
 	}
 	return src[:len(src)-num], append(dist, src[len(src)-num:]...), nil
 }
 
-func DifferenceList[T comparable](a, b []T) []T {
+func ListDifference[T comparable](a, b []T) []T {
 	mb := make(map[T]struct{}, len(b))
 	for _, x := range b {
 		mb[x] = struct{}{}
@@ -118,4 +122,13 @@ func DifferenceList[T comparable](a, b []T) []T {
 		}
 	}
 	return diff
+}
+
+func ListFindIndex[T comparable](list []T, predicate func(a T) bool) int {
+	for i := 0; i < len(list); i++ {
+		if predicate(list[i]) {
+			return i
+		}
+	}
+	return -1
 }
