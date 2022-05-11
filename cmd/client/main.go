@@ -7,7 +7,6 @@ import (
 
 	"github.com/Mrtoy/dtcg-server/app"
 	"github.com/Mrtoy/dtcg-server/service"
-	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 const deckInfo = `["Exported from http://digimon.card.moe","ST3-07","ST3-07","ST3-07","ST3-12","ST3-12","ST3-12","ST3-12","BT1-063","BT1-063","BT1-052","BT1-052","BT1-052","BT1-052","BT1-048","BT1-048","BT1-048","BT1-048","BT1-005","BT1-006","BT1-006","BT1-006","BT1-006","BT1-057","BT1-057","BT1-102","BT1-102","BT2-033","BT2-033","BT2-033","BT2-099","BT2-038","BT2-038","BT2-038","BT2-038","BT2-034","BT2-034","BT2-034","BT2-039","BT2-039","BT2-098","BT2-098","BT1-060","BT1-060","BT1-060","BT1-060","BT1-087","BT1-087","BT1-087","BT2-041","BT2-041","BT2-041","BT2-041","BT2-087","BT2-087","BT2-087"]`
@@ -18,7 +17,6 @@ func main() {
 		panic(err)
 	}
 	defer conn.Close()
-	preStr := ""
 	sess := service.NewSession(conn)
 	sess.On("connect", func(pack *service.Package, sess *service.Session) {
 		var res struct {
@@ -55,17 +53,13 @@ func main() {
 		pack.Unmarshal(&res)
 		log.Println(res)
 	})
+	gameState := &service.DMPState[app.Game]{}
 	sess.On("game:info-diff", func(pack *service.Package, sess *service.Session) {
-		dmp := diffmatchpatch.New()
-		patchs, _ := dmp.PatchFromText(pack.String())
-		str, _ := dmp.PatchApply(patchs, preStr)
-		preStr = str
-		log.Println(pack.String())
+		gameState.Update(pack.String())
+		log.Println(gameState.State)
 	})
 	sess.On("game:end", func(pack *service.Package, sess *service.Session) {
-		var res map[string]any
-		pack.Unmarshal(&res)
-		log.Println(res)
+
 	})
 
 	sess.Receive()

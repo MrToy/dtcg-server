@@ -35,11 +35,7 @@ func (s *Session) Send(tp string, data any) error {
 	if err != nil {
 		return err
 	}
-	if string(pack.Type) == "error" {
-		log.Printf("player %d <- %s %s", s.ID, pack.Type, pack.Data)
-	} else {
-		log.Printf("player %d <- %s", s.ID, pack.Type)
-	}
+	log.Printf("player %d <- %s", s.ID, pack.Type)
 	return nil
 }
 

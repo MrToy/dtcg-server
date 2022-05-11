@@ -20,7 +20,7 @@ func StartGame(players []*app.Player) {
 	go g.Start()
 }
 
-func (m *GameController) ExitGame(pack *service.Package, sess *service.Session) {
+func (m *GameController) Leave(pack *service.Package, sess *service.Session) {
 	player := sess.Data["player"].(*app.Player)
 	g := sess.Data["game"].(*app.Game)
 	if g == nil {
