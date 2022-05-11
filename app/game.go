@@ -34,6 +34,23 @@ type Game struct {
 	CurrentTurnIndex int
 }
 
+func NewGame(room *Room) *Game {
+	g := &Game{
+		Room:        room,
+		MemoryBank:  0,
+		TurnChan:    make(chan bool),
+		EndChan:     make(chan bool),
+		PlayerAreas: make(map[int]*PlayerArea),
+	}
+	for _, player := range room.Players {
+		area := &PlayerArea{}
+		g.PlayerAreas[player.Session.ID] = area
+	}
+	g.Players[0].Opponent = g.Players[1]
+	g.Players[1].Opponent = g.Players[0]
+	return g
+}
+
 func (g *Game) BroadcastGameInfo() {
 	dmp := diffmatchpatch.New()
 	bytes, _ := json.Marshal(g)
@@ -54,10 +71,7 @@ func (g *Game) Start() {
 	g.BroadcastGameInfo()
 
 	for {
-		finish := g.OnTurnChange()
-		if !finish {
-			continue
-		}
+		g.OnTurnChange()
 		select {
 		case <-g.EndChan:
 			return
@@ -99,58 +113,61 @@ func (g *Game) SpliteOriginDeck(p *Player) {
 
 var turnList = []string{"active", "draw", "born", "main", "end"}
 
-func (g *Game) OnTurnChange() bool {
+func (g *Game) OnTurnChange() {
 	g.CurrentTurnIndex++
 	if g.CurrentTurnIndex > len(turnList)-1 {
 		g.CurrentTurnIndex = 0
 	}
 	g.CurrentTurn = turnList[g.CurrentTurnIndex]
 	g.BroadcastGameInfo()
-	var finish bool
 	switch g.CurrentTurn {
 	case "active":
-		finish = g.OnTurnActive()
+		g.OnTurnActive()
 	case "draw":
-		finish = g.OnTurnDraw()
+		g.OnTurnDraw()
 	case "born":
-		finish = g.OnTurnBorn()
+		g.OnTurnBorn()
 	case "main":
-		finish = g.OnTurnMain()
+		g.OnTurnMain()
 	case "end":
-		finish = g.OnTurnEnd()
+		g.OnTurnEnd()
 	}
 	g.BroadcastGameInfo()
-	return finish
 }
 
-func (g *Game) OnTurnActive() bool {
+func (g *Game) OnTurnActive() {
 
-	return true
+	g.TurnChan <- true
 }
 
-func (g *Game) OnTurnDraw() bool {
+func (g *Game) OnTurnDraw() {
 	area := g.PlayerAreas[g.CurrentPlayer.Session.ID]
-	area.Deck, area.Hand, _ = ListMove(area.Deck, area.Hand, 1)
-	return true
+	var err error
+	area.Deck, area.Hand, err = ListMove(area.Deck, area.Hand, 1)
+	if err != nil {
+		g.WinPlayer = g.CurrentPlayer.Opponent
+		g.End()
+		return
+	}
+	g.TurnChan <- true
 }
 
-func (g *Game) OnTurnBorn() bool {
+func (g *Game) OnTurnBorn() {
 	g.CurrentPlayer.Session.Send("confirm", map[string]any{
 		"message":  "是否需要育成",
 		"callback": "game:born",
 	})
-	return false
 }
 
-func (g *Game) OnTurnMain() bool {
-	return false
+func (g *Game) OnTurnMain() {
+
 }
 
-func (g *Game) OnTurnEnd() bool {
+func (g *Game) OnTurnEnd() {
 	g.CurrentPlayer = g.CurrentPlayer.Opponent
 	g.OperationPlayer = g.CurrentPlayer
 	g.BroadcastGameInfo()
-	return true
+	g.TurnChan <- true
 }
 
 func (g *Game) Born() {
@@ -189,5 +206,4 @@ func (g *Game) Summon(id int) {
 	monster := NewMonsterCard()
 	monster.List = []*Card{card}
 	area.Field = append(area.Field, monster)
-	g.TurnChan <- true
 }

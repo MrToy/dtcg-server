@@ -7,22 +7,19 @@ import (
 	"github.com/Mrtoy/dtcg-server/service"
 )
 
-type RoomManager struct {
+type RoomController struct {
 	RoomPlayerLimit int
 	Rooms           map[string]*app.Room
-	PlayerInRoom    map[int]*app.Room
-	GameManager     *GameManager
 }
 
-func NewRoomManager() *RoomManager {
-	return &RoomManager{
+func NewRoomController() *RoomController {
+	return &RoomController{
 		Rooms:           make(map[string]*app.Room),
-		PlayerInRoom:    make(map[int]*app.Room),
 		RoomPlayerLimit: 2,
 	}
 }
 
-func (r *RoomManager) Join(pack *service.Package, sess *service.Session) {
+func (r *RoomController) Join(pack *service.Package, sess *service.Session) {
 	player := sess.Data["player"].(*app.Player)
 	var req struct {
 		Name string
@@ -42,19 +39,18 @@ func (r *RoomManager) Join(pack *service.Package, sess *service.Session) {
 		sess.Error(errors.New("room is full"))
 		return
 	}
-	r.PlayerInRoom[player.Session.ID] = room
+	sess.Data["room"] = room
 	room.Players = append(room.Players, player)
 	room.BroadcastRoomInfo()
 }
 
-func (r *RoomManager) Leave(pack *service.Package, sess *service.Session) {
+func (r *RoomController) Leave(pack *service.Package, sess *service.Session) {
 	player := sess.Data["player"].(*app.Player)
-	room, ok := r.PlayerInRoom[player.Session.ID]
-	if !ok {
+	room := sess.Data["room"].(*app.Room)
+	if room == nil {
 		return
 	}
 	room.ReadyState[player.Session.ID] = false
-	delete(r.PlayerInRoom, player.Session.ID)
 	for i, p := range room.Players {
 		if player == p {
 			room.Players = append(room.Players[:i], room.Players[i+1:]...)
@@ -63,9 +59,9 @@ func (r *RoomManager) Leave(pack *service.Package, sess *service.Session) {
 	room.BroadcastRoomInfo()
 }
 
-func (r *RoomManager) Ready(pack *service.Package, sess *service.Session) {
+func (r *RoomController) Ready(pack *service.Package, sess *service.Session) {
 	player := sess.Data["player"].(*app.Player)
-	room := r.PlayerInRoom[player.Session.ID]
+	room := sess.Data["room"].(*app.Room)
 	if room == nil {
 		sess.Error(errors.New("you are not in a room"))
 		return
@@ -79,6 +75,6 @@ func (r *RoomManager) Ready(pack *service.Package, sess *service.Session) {
 	}
 	room.BroadcastRoomInfo()
 	if readyCount == r.RoomPlayerLimit {
-		r.GameManager.StartGame(room)
+		StartGame(room)
 	}
 }
