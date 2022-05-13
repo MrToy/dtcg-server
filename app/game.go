@@ -40,7 +40,6 @@ type Game struct {
 	MemoryBank        int //内存条
 	CurrentPlayer     *Player
 	OperationPlayer   *Player
-	TurnChan          chan bool             `json:"-"`
 	EndChan           chan bool             `json:"-"`
 	MessageChan       chan *service.Package `json:"-"`
 	WinPlayer         *Player
@@ -57,7 +56,6 @@ func NewGame(players []*Player) *Game {
 		Players:     gamePlayers,
 		MemoryBank:  0,
 		MessageChan: make(chan *service.Package),
-		TurnChan:    make(chan bool),
 		EndChan:     make(chan bool),
 		PlayerAreas: make(map[int]*PlayerArea),
 	}
@@ -79,16 +77,15 @@ func (g *Game) Broadcast(tp string, data any) {
 	}
 }
 
-func (g *Game) BroadcastGameInfo() {
+func (g *Game) broadcastGameInfo() {
 	dmp := diffmatchpatch.New()
 	bytes, _ := json.Marshal(g)
 	patchs := dmp.PatchMake(g.PreStateStr, string(bytes))
 	g.PreStateStr = string(bytes)
 	g.Broadcast("game:info-diff", dmp.PatchToText(patchs))
-	// log.Println(dmp.PatchApply(patchs, g.PreStateStr))
 }
 
-func (g *Game) BroadcastDeckDetails() {
+func (g *Game) broadcastDeckDetails() {
 	details := map[string]*CardDetail{}
 	for _, p := range g.Players {
 		for _, s := range p.OriginDeck {
@@ -100,17 +97,17 @@ func (g *Game) BroadcastDeckDetails() {
 
 func (g *Game) Start() {
 	g.Broadcast("game:start", nil)
-	g.BroadcastDeckDetails()
+	g.broadcastDeckDetails()
 
 	g.CurrentPlayer = g.Players[0]
 
 	g.setupDeck(g.Players[0])
 	g.setupDeck(g.Players[1])
-	g.BroadcastGameInfo()
+	g.broadcastGameInfo()
 
 	g.setupDraw(g.Players[0])
 	g.setupDraw(g.Players[1])
-	g.BroadcastGameInfo()
+	g.broadcastGameInfo()
 
 	g.CurrentTurn = "born"
 
@@ -132,8 +129,6 @@ func (g *Game) Start() {
 			select {
 			case pack := <-g.MessageChan:
 				g.onAction(pack)
-			case <-g.TurnChan:
-				break loop
 			case <-timer:
 				break loop
 			case <-g.EndChan:
@@ -154,11 +149,11 @@ func (g *Game) update() {
 	case "born":
 		g.onTurnBorn()
 	case "main":
-		g.OnTurnMain()
+		g.onTurnMain()
 	case "end":
-		g.OnTurnEnd()
+		g.onTurnEnd()
 	}
-	g.BroadcastGameInfo()
+	g.broadcastGameInfo()
 
 	index := ListFindIndex(turnList, func(s string) bool {
 		return s == g.CurrentTurn
@@ -171,7 +166,7 @@ func (g *Game) update() {
 }
 
 func (g *Game) onGameEnd() {
-	g.BroadcastGameInfo()
+	g.broadcastGameInfo()
 	g.Broadcast("game:end", nil)
 	for _, p := range g.Players {
 		delete(p.Session.Data, "game")
@@ -221,8 +216,11 @@ func (g *Game) onTurnDraw() {
 }
 
 func (g *Game) onTurnBorn() {
-	message := "是否需要育成?"
 	area := g.PlayerAreas[g.CurrentPlayer.Session.ID]
+	if len(area.Egg) == 0 {
+		return
+	}
+	message := "是否需要育成?"
 	if len(area.Born) > 0 {
 		message = "是否登场育成区怪兽?"
 	}
@@ -233,11 +231,11 @@ func (g *Game) onTurnBorn() {
 	g.OperationPlayer = g.CurrentPlayer
 }
 
-func (g *Game) OnTurnMain() {
+func (g *Game) onTurnMain() {
 	g.OperationPlayer = g.CurrentPlayer
 }
 
-func (g *Game) OnTurnEnd() {
+func (g *Game) onTurnEnd() {
 	g.CurrentPlayer = g.CurrentPlayer.Opponent
 }
 
@@ -271,7 +269,7 @@ func (g *Game) onAction(pack *service.Package) {
 	case "game:next-turn":
 		g.OperationPlayer = nil
 	}
-	g.BroadcastGameInfo()
+	g.broadcastGameInfo()
 }
 
 func (g *Game) onActionPlayCard(pack *service.Package) {
@@ -299,4 +297,5 @@ func (g *Game) onActionBorn() {
 }
 
 func (g *Game) onActionAttack() {
+
 }

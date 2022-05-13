@@ -1,8 +1,6 @@
 package controller
 
 import (
-	"log"
-
 	"github.com/Mrtoy/dtcg-server/app"
 	"github.com/Mrtoy/dtcg-server/service"
 )
@@ -30,7 +28,5 @@ func OnGameMessage(pack *service.Package, sess *service.Session) {
 	if !ok {
 		return
 	}
-	log.Println("OnGameMessage", string(pack.Type))
 	g.MessageChan <- pack
-	log.Println("OnGameMessage end", string(pack.Type))
 }

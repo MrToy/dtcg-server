@@ -66,7 +66,7 @@ func (s *Session) Receive() {
 		for k, handler := range s.Handlers {
 			matched, _ := path.Match(k, string(pack.Type))
 			if matched {
-				handler(pack, s)
+				go handler(pack, s)
 			}
 		}
 	}

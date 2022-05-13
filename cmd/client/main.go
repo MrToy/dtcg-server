@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net"
+	"time"
 
 	"github.com/Mrtoy/dtcg-server/app"
 	"github.com/Mrtoy/dtcg-server/service"
@@ -29,7 +30,7 @@ func main() {
 			OriginDeck: prepareCards(),
 		})
 		sess.Send("room:join", map[string]any{"Name": "1"})
-		// time.Sleep(3 * time.Second)
+		time.Sleep(3 * time.Second)
 		sess.Send("room:ready", nil)
 	})
 	sess.On("error", func(pack *service.Package, sess *service.Session) {
