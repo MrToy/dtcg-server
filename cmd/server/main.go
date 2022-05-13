@@ -8,7 +8,6 @@ import (
 
 func main() {
 	s := service.NewServer()
-	g := controller.NewGameController()
 	r := controller.NewRoomController()
 	s.On("connect", func(pack *service.Package, sess *service.Session) {
 		app.SetPlayer(sess)
@@ -18,7 +17,7 @@ func main() {
 	})
 	s.On("disconnect", func(pack *service.Package, sess *service.Session) {
 		r.Leave(pack, sess)
-		controller.WithGameInfo(g.Leave)(pack, sess)
+		controller.LeaveGame(pack, sess)
 	})
 	s.On("player:update-info", controller.UpdatePlayerInfo)
 
@@ -26,9 +25,6 @@ func main() {
 	s.On("room:leave", r.Leave)
 	s.On("room:ready", r.Ready)
 
-	s.On("game:born", controller.WithGameInfo(g.Born))
-	s.On("game:play-card", controller.WithGameInfo(g.PlayCard))
-	s.On("game:attack", controller.WithGameInfo(g.Attack))
-	s.On("game:next-turn", controller.WithGameInfo(g.NextTurn))
+	s.On("game:*", controller.OnGameMessage)
 	s.Listen(":2333")
 }

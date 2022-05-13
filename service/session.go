@@ -3,6 +3,7 @@ package service
 import (
 	"log"
 	"net"
+	"path"
 )
 
 type SessionHandler func(pack *Package, sess *Session)
@@ -62,9 +63,11 @@ func (s *Session) Receive() {
 			break
 		}
 		log.Printf("player %d -> %s", s.ID, pack.Type)
-		handler, ok := s.Handlers[string(pack.Type)]
-		if ok {
-			handler(pack, s)
+		for k, handler := range s.Handlers {
+			matched, _ := path.Match(k, string(pack.Type))
+			if matched {
+				handler(pack, s)
+			}
 		}
 	}
 }

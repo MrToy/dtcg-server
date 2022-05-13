@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/Mrtoy/dtcg-server/service"
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
@@ -39,8 +40,9 @@ type Game struct {
 	MemoryBank        int //内存条
 	CurrentPlayer     *Player
 	OperationPlayer   *Player
-	TurnChan          chan bool `json:"-"`
-	EndChan           chan bool `json:"-"`
+	TurnChan          chan bool             `json:"-"`
+	EndChan           chan bool             `json:"-"`
+	MessageChan       chan *service.Package `json:"-"`
 	WinPlayer         *Player
 	PreStateStr       string `json:"-"`
 	CurrentTurn       string
@@ -54,6 +56,7 @@ func NewGame(players []*Player) *Game {
 	g := &Game{
 		Players:     gamePlayers,
 		MemoryBank:  0,
+		MessageChan: make(chan *service.Package),
 		TurnChan:    make(chan bool),
 		EndChan:     make(chan bool),
 		PlayerAreas: make(map[int]*PlayerArea),
@@ -101,12 +104,12 @@ func (g *Game) Start() {
 
 	g.CurrentPlayer = g.Players[0]
 
-	g.SetupDeck(g.Players[0])
-	g.SetupDeck(g.Players[1])
+	g.setupDeck(g.Players[0])
+	g.setupDeck(g.Players[1])
 	g.BroadcastGameInfo()
 
-	g.SetupDraw(g.Players[0])
-	g.SetupDraw(g.Players[1])
+	g.setupDraw(g.Players[0])
+	g.setupDraw(g.Players[1])
 	g.BroadcastGameInfo()
 
 	g.CurrentTurn = "born"
@@ -116,27 +119,40 @@ func (g *Game) Start() {
 			g.onGameEnd()
 			return
 		}
-		g.Update()
+		g.update()
+		timer := time.After(233 * time.Second)
 		if g.OperationPlayer != nil {
-			log.Printf("player %d -- user action", g.OperationPlayer.Session.ID)
-			select {
-			case <-g.TurnChan:
-			case <-time.After(233 * time.Second):
-			}
-			g.OperationPlayer = nil
+			log.Printf("player %d -- wait user action", g.OperationPlayer.Session.ID)
 		}
+	loop:
+		for {
+			if g.OperationPlayer == nil {
+				break loop
+			}
+			select {
+			case pack := <-g.MessageChan:
+				g.onAction(pack)
+			case <-g.TurnChan:
+				break loop
+			case <-timer:
+				break loop
+			case <-g.EndChan:
+				g.GameEnd = true
+				break loop
+			}
+		}
+		g.OperationPlayer = nil
 	}
 }
 
-func (g *Game) Update() {
-	log.Printf("player %d -- turn %s", g.CurrentPlayer.Session.ID, g.CurrentTurn)
+func (g *Game) update() {
 	switch g.CurrentTurn {
 	case "active":
-		g.OnTurnActive()
+		g.onTurnActive()
 	case "draw":
-		g.OnTurnDraw()
+		g.onTurnDraw()
 	case "born":
-		g.OnTurnBorn()
+		g.onTurnBorn()
 	case "main":
 		g.OnTurnMain()
 	case "end":
@@ -162,7 +178,7 @@ func (g *Game) onGameEnd() {
 	}
 }
 
-func (g *Game) SetupDeck(p *Player) {
+func (g *Game) setupDeck(p *Player) {
 	deck := []*Card{}
 	for _, s := range p.OriginDeck {
 		card := NewCard()
@@ -175,7 +191,7 @@ func (g *Game) SetupDeck(p *Player) {
 	g.PlayerAreas[p.Session.ID].Deck = deck
 }
 
-func (g *Game) SetupDraw(player *Player) {
+func (g *Game) setupDraw(player *Player) {
 	area := g.PlayerAreas[player.Session.ID]
 	var picked []*Card
 	picked, area.Deck = ListPickSome(area.Deck, func(a *Card) bool {
@@ -189,11 +205,11 @@ func (g *Game) SetupDraw(player *Player) {
 
 var turnList = []string{"active", "draw", "born", "main", "end"}
 
-func (g *Game) OnTurnActive() {
+func (g *Game) onTurnActive() {
 
 }
 
-func (g *Game) OnTurnDraw() {
+func (g *Game) onTurnDraw() {
 	area := g.PlayerAreas[g.CurrentPlayer.Session.ID]
 	var err error
 	area.Deck, area.Hand, err = ListMove(area.Deck, area.Hand, 1)
@@ -204,7 +220,7 @@ func (g *Game) OnTurnDraw() {
 	}
 }
 
-func (g *Game) OnTurnBorn() {
+func (g *Game) onTurnBorn() {
 	message := "是否需要育成?"
 	area := g.PlayerAreas[g.CurrentPlayer.Session.ID]
 	if len(area.Born) > 0 {
@@ -223,40 +239,9 @@ func (g *Game) OnTurnMain() {
 
 func (g *Game) OnTurnEnd() {
 	g.CurrentPlayer = g.CurrentPlayer.Opponent
-	g.BroadcastGameInfo()
 }
 
-// --------- 以下为user action ---------
-
-func (g *Game) EndGame() {
-	g.GameEnd = true
-	if g.OperationPlayer != nil {
-		g.TurnChan <- true
-	}
-}
-
-func (g *Game) Born() {
-	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
-	var picked []*Card
-	picked, area.Egg, _ = ListPick(area.Egg, 1)
-	monster := NewMonsterCard()
-	monster.ID = g.InstanceIDCounter
-	g.InstanceIDCounter++
-	monster.List = picked
-	area.Born = append(area.Born, monster)
-	g.TurnChan <- true
-}
-
-func (g *Game) BornSummon() {
-	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
-	area.Born, area.Field, _ = ListMove(area.Born, area.Field, 1)
-	g.TurnChan <- true
-}
-
-func (g *Game) Attack(card *MonsterCard, target *MonsterCard) {
-}
-
-func (g *Game) Summon(id int) {
+func (g *Game) summon(id int) {
 	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
 	index := ListFindIndex(area.Hand, func(it *Card) bool {
 		return it.ID == id
@@ -271,5 +256,47 @@ func (g *Game) Summon(id int) {
 	g.InstanceIDCounter++
 	monster.List = []*Card{card}
 	area.Field = append(area.Field, monster)
+
+}
+
+func (g *Game) onAction(pack *service.Package) {
+	log.Printf("player %d -- user action %s", g.OperationPlayer.Session.ID, string(pack.Type))
+	switch string(pack.Type) {
+	case "game:play-card":
+		g.onActionPlayCard(pack)
+	case "game:born":
+		g.onActionBorn()
+	case "game:attack":
+		g.onActionAttack()
+	case "game:next-turn":
+		g.OperationPlayer = nil
+	}
 	g.BroadcastGameInfo()
+}
+
+func (g *Game) onActionPlayCard(pack *service.Package) {
+	var req struct {
+		ID int `json:"id"`
+	}
+	pack.Unmarshal(&req)
+	g.summon(req.ID)
+}
+
+func (g *Game) onActionBorn() {
+	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
+	if len(area.Born) == 0 {
+		var picked []*Card
+		picked, area.Egg, _ = ListPick(area.Egg, 1)
+		monster := NewMonsterCard()
+		monster.ID = g.InstanceIDCounter
+		g.InstanceIDCounter++
+		monster.List = picked
+		area.Born = append(area.Born, monster)
+	} else {
+		area.Born, area.Field, _ = ListMove(area.Born, area.Field, 1)
+	}
+	g.OperationPlayer = nil
+}
+
+func (g *Game) onActionAttack() {
 }
