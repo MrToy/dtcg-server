@@ -48,6 +48,12 @@ func (s *Session) On(tp string, handler SessionHandler) {
 }
 
 func (s *Session) Receive() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println("Recovered in f", err)
+			s.conn.Close()
+		}
+	}()
 	for {
 		pack := &Package{}
 		err := pack.Unpack(s.conn)

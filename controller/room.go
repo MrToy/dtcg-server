@@ -46,8 +46,8 @@ func (r *RoomController) Join(pack *service.Package, sess *service.Session) {
 
 func (r *RoomController) Leave(pack *service.Package, sess *service.Session) {
 	player := sess.Data["player"].(*app.Player)
-	room := sess.Data["room"].(*app.Room)
-	if room == nil {
+	room, ok := sess.Data["room"].(*app.Room)
+	if !ok {
 		return
 	}
 	delete(room.ReadyState, player.Session.ID)
@@ -57,8 +57,8 @@ func (r *RoomController) Leave(pack *service.Package, sess *service.Session) {
 
 func (r *RoomController) Ready(pack *service.Package, sess *service.Session) {
 	player := sess.Data["player"].(*app.Player)
-	room := sess.Data["room"].(*app.Room)
-	if room == nil {
+	room, ok := sess.Data["room"].(*app.Room)
+	if !ok {
 		sess.Error(errors.New("you are not in a room"))
 		return
 	}

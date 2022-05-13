@@ -8,7 +8,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/Mrtoy/dtcg-server/service"
+	"github.com/Mrtoy/dtcg-server/app"
 )
 
 func download(u string, id string) {
@@ -34,13 +34,13 @@ func download(u string, id string) {
 
 func main() {
 	var wg sync.WaitGroup
-	for _, card := range service.GetCardDetails() {
+	for _, card := range app.GetCardDetails() {
 		p := card.Images[0].ImgPath
 		if p == "" {
 			p = card.Images[0].ThumbPath
 		}
 		wg.Add(1)
-		go func(card *service.CardDetail) {
+		go func(card *app.CardDetail) {
 			download(p, card.Serial)
 			wg.Done()
 		}(card)

@@ -55,14 +55,8 @@ type Card struct {
 	Serial string
 }
 
-var globalCardID int = 0
-
-func NewCard(s string) *Card {
-	globalCardID++
-	return &Card{
-		ID:     globalCardID,
-		Serial: s,
-	}
+func NewCard() *Card {
+	return &Card{}
 }
 
 func GetDetail(serial string) *CardDetail {
@@ -81,8 +75,7 @@ type MonsterCard struct {
 }
 
 func NewMonsterCard() *MonsterCard {
-	globalCardID++
 	return &MonsterCard{
-		ID: globalCardID,
+		List: []*Card{},
 	}
 }

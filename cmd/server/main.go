@@ -18,12 +18,17 @@ func main() {
 	})
 	s.On("disconnect", func(pack *service.Package, sess *service.Session) {
 		r.Leave(pack, sess)
-		g.Leave(pack, sess)
+		controller.WithGameInfo(g.Leave)(pack, sess)
 	})
 	s.On("player:update-info", controller.UpdatePlayerInfo)
+
 	s.On("room:join", r.Join)
 	s.On("room:leave", r.Leave)
 	s.On("room:ready", r.Ready)
-	s.On("game:born", g.Born)
+
+	s.On("game:born", controller.WithGameInfo(g.Born))
+	s.On("game:play-card", controller.WithGameInfo(g.PlayCard))
+	s.On("game:attack", controller.WithGameInfo(g.Attack))
+	s.On("game:next-turn", controller.WithGameInfo(g.NextTurn))
 	s.Listen(":2333")
 }

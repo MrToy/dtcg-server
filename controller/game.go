@@ -20,39 +20,54 @@ func StartGame(players []*app.Player) {
 	go g.Start()
 }
 
-func (m *GameController) Leave(pack *service.Package, sess *service.Session) {
+func WithGameInfo(fn func(*service.Package, *service.Session, *app.Game, *app.PlayerArea)) func(*service.Package, *service.Session) {
+	return func(pack *service.Package, sess *service.Session) {
+		player := sess.Data["player"].(*app.Player)
+		g, ok := sess.Data["game"].(*app.Game)
+		if !ok {
+			return
+		}
+		if g.OperationPlayer != player {
+			return
+		}
+		area := g.PlayerAreas[player.Session.ID]
+		if area == nil {
+			return
+		}
+		fn(pack, sess, g, area)
+	}
+}
+
+func (m *GameController) Leave(pack *service.Package, sess *service.Session, g *app.Game, area *app.PlayerArea) {
 	player := sess.Data["player"].(*app.Player)
-	g := sess.Data["game"].(*app.Game)
-	if g == nil {
-		return
-	}
 	g.WinPlayer = player.Opponent
-	g.End()
+	g.EndGame()
 }
 
-func (m *GameController) Born(pack *service.Package, sess *service.Session) {
-	g := sess.Data["game"].(*app.Game)
-	if g == nil {
-		return
+func (m *GameController) Born(pack *service.Package, sess *service.Session, g *app.Game, area *app.PlayerArea) {
+	if len(area.Born) == 0 {
+		g.Born()
+	} else {
+		g.BornSummon()
 	}
-	g.Born()
 }
 
-func (m *GameController) SummonBorn(pack *service.Package, sess *service.Session) {
-	g := sess.Data["game"].(*app.Game)
-	if g == nil {
-		return
+func (m *GameController) PlayCard(pack *service.Package, sess *service.Session, g *app.Game, area *app.PlayerArea) {
+	var req struct {
+		ID int `json:"id"`
 	}
-	g.SummonBorn()
-}
-
-func (m *GameController) Summon(pack *service.Package, sess *service.Session) {
-	g := sess.Data["game"].(*app.Game)
-	if g == nil {
-		return
-	}
-	var req map[string]any
 	pack.Unmarshal(&req)
-	id := req["id"].(int)
-	g.Summon(id)
+	g.Summon(req.ID)
+}
+
+func (m *GameController) Attack(pack *service.Package, sess *service.Session, g *app.Game, area *app.PlayerArea) {
+	var req struct {
+		ID int `json:"id"`
+	}
+	pack.Unmarshal(&req)
+	g.Summon(req.ID)
+}
+
+func (m *GameController) NextTurn(pack *service.Package, sess *service.Session, g *app.Game, area *app.PlayerArea) {
+	g.TurnChan <- true
 }

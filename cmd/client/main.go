@@ -29,6 +29,7 @@ func main() {
 			OriginDeck: prepareCards(),
 		})
 		sess.Send("room:join", map[string]any{"Name": "1"})
+		// time.Sleep(3 * time.Second)
 		sess.Send("room:ready", nil)
 	})
 	sess.On("error", func(pack *service.Package, sess *service.Session) {
@@ -40,6 +41,7 @@ func main() {
 		log.Println(res)
 		method := res["callback"].(string)
 		sess.Send(method, "1")
+		sess.Send("game:next-turn", nil)
 	})
 
 	sess.On("room:info", func(pack *service.Package, sess *service.Session) {
@@ -47,6 +49,7 @@ func main() {
 	})
 
 	sess.On("game:start", func(pack *service.Package, sess *service.Session) {
+
 	})
 	sess.On("game:current-change", func(pack *service.Package, sess *service.Session) {
 		var res map[string]any
