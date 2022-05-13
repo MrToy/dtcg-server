@@ -17,6 +17,7 @@ type PlayerArea struct {
 	Born    []*MonsterCard //育成区
 	Hand    []*Card        //手牌
 	Field   []*MonsterCard //场上
+	Field2  []*MonsterCard //驯兽师场
 	Deck    []*Card        //卡组
 	Discard []*Card        //弃牌堆
 	Defense []*Card        //安防区
@@ -28,6 +29,7 @@ func NewPlayerArea() *PlayerArea {
 		Born:    []*MonsterCard{},
 		Hand:    []*Card{},
 		Field:   []*MonsterCard{},
+		Field2:  []*MonsterCard{},
 		Deck:    []*Card{},
 		Discard: []*Card{},
 		Defense: []*Card{},
@@ -176,10 +178,8 @@ func (g *Game) onGameEnd() {
 func (g *Game) setupDeck(p *Player) {
 	deck := []*Card{}
 	for _, s := range p.OriginDeck {
-		card := NewCard()
+		card := NewCard(g)
 		card.Serial = s
-		card.ID = g.InstanceIDCounter
-		g.InstanceIDCounter++
 		deck = append(deck, card)
 	}
 	ShuffleCards(deck)
@@ -239,24 +239,6 @@ func (g *Game) onTurnEnd() {
 	g.CurrentPlayer = g.CurrentPlayer.Opponent
 }
 
-func (g *Game) summon(id int) {
-	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
-	index := ListFindIndex(area.Hand, func(it *Card) bool {
-		return it.ID == id
-	})
-	if index == -1 {
-		return
-	}
-	card := area.Hand[index]
-	area.Hand = ListRemoveAt(area.Hand, index)
-	monster := NewMonsterCard()
-	monster.ID = g.InstanceIDCounter
-	g.InstanceIDCounter++
-	monster.List = []*Card{card}
-	area.Field = append(area.Field, monster)
-
-}
-
 func (g *Game) onAction(pack *service.Package) {
 	log.Printf("player %d -- user action %s", g.OperationPlayer.Session.ID, string(pack.Type))
 	switch string(pack.Type) {
@@ -277,23 +259,67 @@ func (g *Game) onActionPlayCard(pack *service.Package) {
 		ID int `json:"id"`
 	}
 	pack.Unmarshal(&req)
-	g.summon(req.ID)
+	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
+	index := ListFindIndex(area.Hand, func(it *Card) bool {
+		return it.ID == req.ID
+	})
+	if index == -1 {
+		return
+	}
+	card := area.Hand[index]
+	d := GetDetail(card.Serial)
+	area.Hand = ListRemove(area.Hand, card)
+	switch d.Type {
+	case "选项卡":
+		g.playMagicCard(card)
+	case "数码兽卡":
+		g.summon(card)
+	case "驯兽师卡":
+		g.summonTamer(card)
+	}
+}
+
+func (g *Game) playMagicCard(card *Card) {
+	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
+	area.Discard = append(area.Discard, card)
+}
+
+func (g *Game) summon(card *Card) {
+	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
+	monster := NewMonsterCard(g)
+	monster.List = []*Card{card}
+	area.Field = append(area.Field, monster)
+}
+
+func (g *Game) summonTamer(card *Card) {
+	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
+	monster := NewMonsterCard(g)
+	monster.List = []*Card{card}
+	area.Field2 = append(area.Field2, monster)
 }
 
 func (g *Game) onActionBorn() {
 	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
 	if len(area.Born) == 0 {
-		var picked []*Card
-		picked, area.Egg, _ = ListPick(area.Egg, 1)
-		monster := NewMonsterCard()
-		monster.ID = g.InstanceIDCounter
-		g.InstanceIDCounter++
-		monster.List = picked
-		area.Born = append(area.Born, monster)
+		g.born()
 	} else {
-		area.Born, area.Field, _ = ListMove(area.Born, area.Field, 1)
+		g.summonBorn()
 	}
 	g.OperationPlayer = nil
+}
+
+func (g *Game) born() {
+	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
+	var picked []*Card
+	picked, area.Egg, _ = ListPick(area.Egg, 1)
+	monster := NewMonsterCard(g)
+	monster.List = picked
+	area.Born = append(area.Born, monster)
+}
+
+func (g *Game) summonBorn() {
+	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
+	area.Born, area.Field, _ = ListMove(area.Born, area.Field, 1)
 }
 
 func (g *Game) onActionAttack() {

@@ -55,8 +55,11 @@ type Card struct {
 	Serial string
 }
 
-func NewCard() *Card {
-	return &Card{}
+func NewCard(g *Game) *Card {
+	g.InstanceIDCounter++
+	return &Card{
+		ID: g.InstanceIDCounter,
+	}
 }
 
 func GetDetail(serial string) *CardDetail {
@@ -74,8 +77,10 @@ type MonsterCard struct {
 	Sleep bool
 }
 
-func NewMonsterCard() *MonsterCard {
+func NewMonsterCard(g *Game) *MonsterCard {
+	g.InstanceIDCounter++
 	return &MonsterCard{
 		List: []*Card{},
+		ID:   g.InstanceIDCounter,
 	}
 }
