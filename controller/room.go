@@ -10,12 +10,31 @@ import (
 type RoomController struct {
 	RoomPlayerLimit int
 	Rooms           map[string]*app.Room
+	SoloPlayers     map[int]*app.Player
+}
+
+func (m *RoomController) JoinSolo(pack *service.Package, sess *service.Session) {
+	player := sess.Data["player"].(*app.Player)
+
+	if len(m.SoloPlayers) > 0 {
+		for id, p := range m.SoloPlayers {
+			delete(m.SoloPlayers, id)
+			StartGame([]*app.Player{p, player})
+			return
+		}
+	}
+	m.SoloPlayers[sess.ID] = player
+}
+
+func (m *RoomController) LeaveSolo(pack *service.Package, sess *service.Session) {
+	delete(m.SoloPlayers, sess.ID)
 }
 
 func NewRoomController() *RoomController {
 	return &RoomController{
 		Rooms:           make(map[string]*app.Room),
 		RoomPlayerLimit: 2,
+		SoloPlayers:     make(map[int]*app.Player),
 	}
 }
 

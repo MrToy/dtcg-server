@@ -18,11 +18,14 @@ func main() {
 	s.On("disconnect", func(pack *service.Package, sess *service.Session) {
 		r.Leave(pack, sess)
 		controller.LeaveGame(pack, sess)
+		r.LeaveSolo(pack, sess)
 	})
 	s.On("player:update-info", controller.UpdatePlayerInfo)
 
 	s.On("room:join", r.Join)
 	s.On("room:leave", r.Leave)
+	s.On("room:join-solo", r.JoinSolo)
+	s.On("room:leave-solo", r.LeaveSolo)
 	s.On("room:ready", r.Ready)
 
 	s.On("game:*", controller.OnGameMessage)
