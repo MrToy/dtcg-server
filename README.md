@@ -1,6 +1,6 @@
 # dtcg-server
 
-## description
+## Description
 
 This project is [dtcg game](https://github.com/MrToy/dtcg) server, write by go
 
@@ -15,4 +15,18 @@ cd ./cmd/server
 go run .
 ```
 
+4. Open another terminal, add ai to fight with you
 
+```bash
+cd ./cmd/client
+go run .
+```
+
+
+## Design
+
+* Use **tcp** protocol to communicate with unity
+* Default port is 2333,  you can change it in ./cmd/server/main.go
+* Each player uses a coroutine to handle events
+* Each game uses a coroutine to handle game logic
+* The main logic of the game is in the ./app/game.go
