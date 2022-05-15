@@ -75,10 +75,11 @@ func ShuffleCards(list []*Card) {
 }
 
 type MonsterCard struct {
-	ID    int
-	List  []*Card
-	Sleep bool
-	DP    int
+	ID       int
+	List     []*Card
+	Sleep    bool
+	DP       int
+	OriginDP int
 }
 
 func NewMonsterCard(g *Game) *MonsterCard {
@@ -89,12 +90,8 @@ func NewMonsterCard(g *Game) *MonsterCard {
 	}
 }
 
-func (m *MonsterCard) GetOriginDP() int {
-	dp, _ := strconv.Atoi(GetDetail(m.List[0].Serial).DP)
-	return dp
-}
-
 func (m *MonsterCard) Add(c *Card) {
 	m.List = append([]*Card{c}, m.List...)
-	m.DP = m.GetOriginDP()
+	m.OriginDP, _ = strconv.Atoi(GetDetail(m.List[0].Serial).DP)
+	m.DP = m.OriginDP
 }

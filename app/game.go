@@ -369,7 +369,7 @@ func (g *Game) processEffect(activeTime string, triggerMonster *MonsterCard) {
 			if triggerMonster != nil && triggerMonster != monster {
 				continue
 			}
-			monster.DP = monster.GetOriginDP()
+			monster.DP = monster.OriginDP
 			for _, card := range monster.List {
 				for _, effect := range card.EffectList {
 					ctx := &CardEffectContext{
