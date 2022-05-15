@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"math/rand"
+	"strconv"
 	"time"
 )
 
@@ -51,14 +52,16 @@ type CardDetail struct {
 }
 
 type Card struct {
-	ID     int
-	Serial string
+	ID         int
+	Serial     string
+	EffectList []CardEffect
 }
 
 func NewCard(g *Game) *Card {
 	g.InstanceIDCounter++
 	return &Card{
-		ID: g.InstanceIDCounter,
+		ID:         g.InstanceIDCounter,
+		EffectList: []CardEffect{},
 	}
 }
 
@@ -75,6 +78,7 @@ type MonsterCard struct {
 	ID    int
 	List  []*Card
 	Sleep bool
+	DP    int
 }
 
 func NewMonsterCard(g *Game) *MonsterCard {
@@ -83,4 +87,14 @@ func NewMonsterCard(g *Game) *MonsterCard {
 		List: []*Card{},
 		ID:   g.InstanceIDCounter,
 	}
+}
+
+func (m *MonsterCard) GetOriginDP() int {
+	dp, _ := strconv.Atoi(GetDetail(m.List[0].Serial).DP)
+	return dp
+}
+
+func (m *MonsterCard) Add(c *Card) {
+	m.List = append([]*Card{c}, m.List...)
+	m.DP = m.GetOriginDP()
 }

@@ -48,7 +48,9 @@ type Game struct {
 	PreStateStr       string `json:"-"`
 	CurrentTurn       string
 	InstanceIDCounter int `json:"-"`
-	GameEnd           bool
+	gameEnd           bool
+	TurnCount         int
+	EachTurnEvoCount  int //本回合进化过的次数
 }
 
 func NewGame(players []*Player) *Game {
@@ -70,7 +72,7 @@ func NewGame(players []*Player) *Game {
 	return g
 }
 
-func (g *Game) Broadcast(tp string, data any) {
+func (g *Game) broadcast(tp string, data any) {
 	for _, p := range g.Players {
 		err := p.Session.Send(tp, data)
 		if err != nil {
@@ -80,11 +82,14 @@ func (g *Game) Broadcast(tp string, data any) {
 }
 
 func (g *Game) broadcastGameInfo() {
+	if g.gameEnd {
+		return
+	}
 	dmp := diffmatchpatch.New()
 	bytes, _ := json.Marshal(g)
 	patchs := dmp.PatchMake(g.PreStateStr, string(bytes))
 	g.PreStateStr = string(bytes)
-	g.Broadcast("game:info-diff", dmp.PatchToText(patchs))
+	g.broadcast("game:info-diff", dmp.PatchToText(patchs))
 }
 
 func (g *Game) broadcastDeckDetails() {
@@ -94,15 +99,41 @@ func (g *Game) broadcastDeckDetails() {
 			details[s] = GetDetail(s)
 		}
 	}
-	g.Broadcast("game:deck-details", details)
+	g.broadcast("game:deck-details", details)
+}
+
+type TurnChain struct {
+	Action func()
+	Next   *TurnChain
 }
 
 func (g *Game) Start() {
-	g.Broadcast("game:start", nil)
-	g.broadcastDeckDetails()
-
+	g.broadcast("game:start", nil)
 	g.CurrentPlayer = g.Players[0]
+	g.setupGame()
 
+	currentChain := g.getFirstTurn()
+	for {
+		currentChain.Action()
+		g.processEffect("", nil)
+		currentChain = currentChain.Next
+		if g.gameEnd {
+			break
+		}
+	}
+	g.onGameEnd()
+}
+
+func (g *Game) onGameEnd() {
+	g.broadcastGameInfo()
+	g.broadcast("game:end", nil)
+	for _, p := range g.Players {
+		delete(p.Session.Data, "game")
+	}
+}
+
+func (g *Game) setupGame() {
+	g.broadcastDeckDetails()
 	g.setupDeck(g.Players[0])
 	g.setupDeck(g.Players[1])
 	g.broadcastGameInfo()
@@ -110,69 +141,6 @@ func (g *Game) Start() {
 	g.setupDraw(g.Players[0])
 	g.setupDraw(g.Players[1])
 	g.broadcastGameInfo()
-
-	g.CurrentTurn = "born"
-
-	for {
-		if g.GameEnd {
-			g.onGameEnd()
-			return
-		}
-		g.update()
-		timer := time.After(233 * time.Second)
-		if g.OperationPlayer != nil {
-			log.Printf("player %d -- wait user action", g.OperationPlayer.Session.ID)
-		}
-	loop:
-		for {
-			if g.OperationPlayer == nil {
-				break loop
-			}
-			select {
-			case pack := <-g.MessageChan:
-				g.onAction(pack)
-			case <-timer:
-				break loop
-			case <-g.EndChan:
-				g.GameEnd = true
-				break loop
-			}
-		}
-		g.OperationPlayer = nil
-	}
-}
-
-func (g *Game) update() {
-	switch g.CurrentTurn {
-	case "active":
-		g.onTurnActive()
-	case "draw":
-		g.onTurnDraw()
-	case "born":
-		g.onTurnBorn()
-	case "main":
-		g.onTurnMain()
-	case "end":
-		g.onTurnEnd()
-	}
-	g.broadcastGameInfo()
-
-	index := ListFindIndex(turnList, func(s string) bool {
-		return s == g.CurrentTurn
-	})
-	if index == len(turnList)-1 {
-		g.CurrentTurn = turnList[0]
-	} else {
-		g.CurrentTurn = turnList[index+1]
-	}
-}
-
-func (g *Game) onGameEnd() {
-	g.broadcastGameInfo()
-	g.Broadcast("game:end", nil)
-	for _, p := range g.Players {
-		delete(p.Session.Data, "game")
-	}
 }
 
 func (g *Game) setupDeck(p *Player) {
@@ -198,20 +166,53 @@ func (g *Game) setupDraw(player *Player) {
 	area.Deck, area.Hand, _ = ListMove(area.Deck, area.Hand, 5)
 }
 
-var turnList = []string{"active", "draw", "born", "main", "end"}
+func (g *Game) getFirstTurn() *TurnChain {
+	turnEnd := &TurnChain{
+		Action: g.onTurnEnd,
+	}
+	turnMain := &TurnChain{
+		Action: g.onTurnMain,
+		Next:   turnEnd,
+	}
+	turnBorn := &TurnChain{
+		Action: g.onTurnBorn,
+		Next:   turnMain,
+	}
+	turnDraw := &TurnChain{
+		Action: g.onTurnDraw,
+		Next:   turnBorn,
+	}
+	turnActive := &TurnChain{
+		Action: g.onTurnActive,
+		Next:   turnDraw,
+	}
+	turnEnd.Next = turnActive
+	return turnBorn
+}
 
 func (g *Game) onTurnActive() {
-
+	area := g.PlayerAreas[g.CurrentPlayer.Session.ID]
+	for _, monster := range area.Field {
+		monster.Sleep = false
+	}
+	for _, monster := range area.Field2 {
+		monster.Sleep = false
+	}
+	g.broadcastGameInfo()
 }
 
 func (g *Game) onTurnDraw() {
-	area := g.PlayerAreas[g.CurrentPlayer.Session.ID]
+	g.Draw(g.CurrentPlayer, 1)
+	g.broadcastGameInfo()
+}
+
+func (g *Game) Draw(p *Player, n int) {
+	area := g.PlayerAreas[p.Session.ID]
 	var err error
-	area.Deck, area.Hand, err = ListMove(area.Deck, area.Hand, 1)
+	area.Deck, area.Hand, err = ListMove(area.Deck, area.Hand, n)
 	if err != nil {
 		g.WinPlayer = g.CurrentPlayer.Opponent
-		g.GameEnd = true
-		return
+		g.gameEnd = true
 	}
 }
 
@@ -220,27 +221,51 @@ func (g *Game) onTurnBorn() {
 	if len(area.Egg) == 0 {
 		return
 	}
-	message := "是否需要育成?"
+	content := "是否需要育成?"
 	if len(area.Born) > 0 {
-		message = "是否登场育成区怪兽?"
+		content = "是否登场育成区怪兽?"
 	}
 	g.CurrentPlayer.Session.Send("confirm", map[string]any{
-		"message":  message,
+		"title":    "育成阶段",
+		"content":  content,
 		"callback": "game:born",
 	})
-	g.OperationPlayer = g.CurrentPlayer
+	g.waitForAction(g.CurrentPlayer)
 }
 
 func (g *Game) onTurnMain() {
-	g.OperationPlayer = g.CurrentPlayer
+	for {
+		nextTurn := g.waitForAction(g.CurrentPlayer)
+		if nextTurn {
+			break
+		}
+	}
 }
 
 func (g *Game) onTurnEnd() {
+	g.TurnCount++
+	g.EachTurnEvoCount = 0
 	g.CurrentPlayer = g.CurrentPlayer.Opponent
 }
 
-func (g *Game) onAction(pack *service.Package) {
-	log.Printf("player %d -- user action %s", g.OperationPlayer.Session.ID, string(pack.Type))
+func (g *Game) waitForAction(p *Player) (nextTurn bool) {
+	if g.gameEnd {
+		return
+	}
+	g.OperationPlayer = p
+	log.Printf("player %d -- wait for action", p.Session.ID)
+	select {
+	case pack := <-g.MessageChan:
+		nextTurn = g.onAction(pack)
+	case <-g.EndChan:
+		g.gameEnd = true
+	case <-time.After(233 * time.Second):
+	}
+	g.OperationPlayer = nil
+	return
+}
+
+func (g *Game) onAction(pack *service.Package) (nextTurn bool) {
 	switch string(pack.Type) {
 	case "game:play-card":
 		g.onActionPlayCard(pack)
@@ -249,9 +274,10 @@ func (g *Game) onAction(pack *service.Package) {
 	case "game:attack":
 		g.onActionAttack()
 	case "game:next-turn":
-		g.OperationPlayer = nil
+		nextTurn = true
 	}
 	g.broadcastGameInfo()
+	return
 }
 
 func (g *Game) onActionPlayCard(pack *service.Package) {
@@ -287,8 +313,17 @@ func (g *Game) playMagicCard(card *Card) {
 func (g *Game) summon(card *Card) {
 	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
 	monster := NewMonsterCard(g)
-	monster.List = []*Card{card}
+	monster.Add(card)
 	area.Field = append(area.Field, monster)
+	g.processEffect("summon", monster)
+}
+
+func (g *Game) evo(card *Card) {
+	area := g.PlayerAreas[g.OperationPlayer.Session.ID]
+	monster := NewMonsterCard(g)
+	monster.Add(card)
+	area.Field = append(area.Field, monster)
+	g.processEffect("evo", monster)
 }
 
 func (g *Game) summonTamer(card *Card) {
@@ -323,5 +358,46 @@ func (g *Game) summonBorn() {
 }
 
 func (g *Game) onActionAttack() {
+	// g.processEffect("attack")
+	g.processDead()
+}
 
+func (g *Game) processEffect(activeTime string, triggerMonster *MonsterCard) {
+	for _, p := range g.Players {
+		area := g.PlayerAreas[p.Session.ID]
+		for _, monster := range area.Field {
+			if triggerMonster != nil && triggerMonster != monster {
+				continue
+			}
+			monster.DP = monster.GetOriginDP()
+			for _, card := range monster.List {
+				for _, effect := range card.EffectList {
+					ctx := &CardEffectContext{
+						Game:    g,
+						Card:    card,
+						Monster: monster,
+						Effect:  &effect,
+						Belong:  p,
+					}
+					if effect.ActiveTime == "" || activeTime == effect.ActiveTime {
+						effect.Action(ctx)
+					}
+				}
+			}
+		}
+	}
+	g.processDead()
+}
+
+func (g *Game) processDead() {
+	for _, p := range g.Players {
+		area := g.PlayerAreas[p.Session.ID]
+		for _, monster := range area.Field {
+			if monster.DP < 0 {
+				g.processEffect("destroy", monster)
+				area.Discard = append(area.Discard, monster.List...)
+				area.Field = ListRemove(area.Field, monster)
+			}
+		}
+	}
 }

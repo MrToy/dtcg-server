@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net"
+	"time"
 
 	"github.com/Mrtoy/dtcg-server/app"
 	"github.com/Mrtoy/dtcg-server/service"
@@ -42,6 +43,7 @@ func main() {
 		log.Println(res)
 		method := res["callback"].(string)
 		sess.Send(method, "1")
+		time.Sleep(1 * time.Second)
 		sess.Send("game:next-turn", nil)
 	})
 
