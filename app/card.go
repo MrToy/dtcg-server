@@ -4,31 +4,16 @@ import (
 	_ "embed"
 	"encoding/json"
 	"math/rand"
-	"strconv"
 	"time"
 )
 
-//go:embed response.json
+//go:embed data2.json
 var cardDetailsBuf []byte
 
-var details map[string]*CardDetail
+var CardDetails map[string]CardDetail
 
 func init() {
-	details = GetCardDetails()
-}
-
-func GetCardDetails() map[string]*CardDetail {
-	var res struct {
-		Data struct {
-			List []*CardDetail `json:"list"`
-		} `json:"data"`
-	}
-	json.Unmarshal(cardDetailsBuf, &res)
-	m := make(map[string]*CardDetail)
-	for _, v := range res.Data.List {
-		m[v.Serial] = v
-	}
-	return m
+	json.Unmarshal(cardDetailsBuf, &CardDetails)
 }
 
 type CardDetail struct {
@@ -39,22 +24,27 @@ type CardDetail struct {
 	Effect         string
 	EvoCoverEffect string
 	SecurityEffect string
-	Level          string
-	Cost           string
-	EvoCost        string
-	DP             string
+	Level          int
+	Cost           int
+	Cost1          int
+	DP             int
 	Attribute      string
 	Class          []string
-	Images         []struct {
-		ImgPath   string
-		ThumbPath string
-	}
+	Image          string
 }
 
 type Card struct {
-	ID         int
-	Serial     string
-	EffectList []CardEffect
+	ID            int
+	Serial        string
+	EffectList    []CardEffect
+	Cost          int
+	OriginCost    int
+	EvoCost       int
+	OriginEvoCost int
+}
+
+func (c *Card) AddEffect(e CardEffect) {
+	c.EffectList = append(c.EffectList, e)
 }
 
 func NewCard(g *Game) *Card {
@@ -63,10 +53,6 @@ func NewCard(g *Game) *Card {
 		ID:         g.InstanceIDCounter,
 		EffectList: []CardEffect{},
 	}
-}
-
-func GetDetail(serial string) *CardDetail {
-	return details[serial]
 }
 
 func ShuffleCards(list []*Card) {
@@ -92,6 +78,6 @@ func NewMonsterCard(g *Game) *MonsterCard {
 
 func (m *MonsterCard) Add(c *Card) {
 	m.List = append([]*Card{c}, m.List...)
-	m.OriginDP, _ = strconv.Atoi(GetDetail(m.List[0].Serial).DP)
+	m.OriginDP = CardDetails[c.Serial].DP
 	m.DP = m.OriginDP
 }

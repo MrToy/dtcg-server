@@ -48,7 +48,7 @@ type Game struct {
 	PreStateStr       string `json:"-"`
 	InstanceIDCounter int    `json:"-"`
 	gameEnd           bool
-	TurnCount         int `json:"-"`
+	TurnCount         int `json:"-"` //轮次计数
 	EachTurnEvoCount  int `json:"-"` //本回合进化过的次数
 }
 
@@ -84,18 +84,21 @@ func (g *Game) broadcastGameInfo() {
 	if g.gameEnd {
 		return
 	}
-	dmp := diffmatchpatch.New()
 	bytes, _ := json.Marshal(g)
+	if string(bytes) == g.PreStateStr {
+		return
+	}
+	dmp := diffmatchpatch.New()
 	patchs := dmp.PatchMake(g.PreStateStr, string(bytes))
 	g.PreStateStr = string(bytes)
 	g.broadcast("game:info-diff", dmp.PatchToText(patchs))
 }
 
 func (g *Game) broadcastDeckDetails() {
-	details := map[string]*CardDetail{}
+	details := map[string]CardDetail{}
 	for _, p := range g.Players {
 		for _, s := range p.OriginDeck {
-			details[s] = GetDetail(s)
+			details[s] = CardDetails[s]
 		}
 	}
 	g.broadcast("game:deck-details", details)
@@ -157,8 +160,8 @@ func (g *Game) setupDraw(player *Player) {
 	area := g.PlayerAreas[player.Session.ID]
 	var picked []*Card
 	picked, area.Deck = ListPickSome(area.Deck, func(a *Card) bool {
-		d := GetDetail(a.Serial)
-		return d.Level == "2"
+		d := CardDetails[a.Serial]
+		return d.Level == 2
 	})
 	area.Egg = ListAppend(area.Egg, picked)
 	area.Deck, area.Defense, _ = ListMove(area.Deck, area.Defense, 5)
@@ -312,7 +315,7 @@ func (g *Game) onActionPlayCard(pack *service.Package) {
 		return
 	}
 	card := area.Hand[index]
-	d := GetDetail(card.Serial)
+	d := CardDetails[card.Serial]
 	area.Hand = ListRemove(area.Hand, card)
 	switch d.Type {
 	case "选项卡":
@@ -384,6 +387,22 @@ func (g *Game) onActionAttack() {
 func (g *Game) processEffect(activeTime string, triggerMonster *MonsterCard) {
 	for _, p := range g.Players {
 		area := g.PlayerAreas[p.Session.ID]
+		// 手卡永续效果结算
+		for _, card := range area.Hand {
+			for _, effect := range card.EffectList {
+				ctx := &CardEffectContext{
+					Game:    g,
+					Card:    card,
+					Monster: nil,
+					Effect:  &effect,
+					Belong:  p,
+				}
+				if effect.ActiveTime == "" {
+					effect.Action(ctx)
+				}
+			}
+		}
+		// 场上效果结算
 		field := append(area.Field, area.Field2...)
 		for _, monster := range field {
 			if triggerMonster != nil && triggerMonster != monster {

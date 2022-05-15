@@ -73,7 +73,7 @@ func NewCardEffectManager() *CardEffectManager {
 		IsEvoSource: true,
 		ActiveTime:  "attack",
 		Action: func(ctx *CardEffectContext) {
-			ctx.Card.EffectList = append(ctx.Card.EffectList, CardEffect{
+			ctx.Card.AddEffect(CardEffect{
 				CreateTurnCount: ctx.Game.TurnCount,
 				Action: func(ctx2 *CardEffectContext) {
 					if !ctx2.IsCurrentTurn() {
@@ -149,7 +149,7 @@ func NewCardEffectManager() *CardEffectManager {
 			if ctx.Game.EachTurnEvoCount == 0 {
 				return
 			}
-			ctx.Card.EffectList = append(ctx.Card.EffectList, CardEffect{
+			ctx.Card.AddEffect(CardEffect{
 				CreateTurnCount: ctx.Game.TurnCount,
 				Action: func(ctx2 *CardEffectContext) {
 					if !ctx2.IsCurrentTurn() {

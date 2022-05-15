@@ -11,12 +11,11 @@ import (
 	"github.com/Mrtoy/dtcg-server/app"
 )
 
-func download(u string, id string) {
+func download(link string, id string) {
 	_, err := os.Stat("./img/" + id + ".jpg")
 	if !os.IsNotExist(err) {
 		return
 	}
-	link := fmt.Sprintf("https://dtcg-assets.moecard.cn/img/%s~card", u)
 	resp, err := http.Get(link)
 	if err != nil {
 		log.Println(err)
@@ -34,13 +33,10 @@ func download(u string, id string) {
 
 func main() {
 	var wg sync.WaitGroup
-	for _, card := range app.GetCardDetails() {
-		p := card.Images[0].ImgPath
-		if p == "" {
-			p = card.Images[0].ThumbPath
-		}
+	for _, card := range app.CardDetails {
+		p := card.Image
 		wg.Add(1)
-		go func(card *app.CardDetail) {
+		go func(card app.CardDetail) {
 			download(p, card.Serial)
 			wg.Done()
 		}(card)
