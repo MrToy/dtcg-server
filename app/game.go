@@ -46,11 +46,10 @@ type Game struct {
 	MessageChan       chan *service.Package `json:"-"`
 	WinPlayer         *Player
 	PreStateStr       string `json:"-"`
-	CurrentTurn       string
-	InstanceIDCounter int `json:"-"`
+	InstanceIDCounter int    `json:"-"`
 	gameEnd           bool
-	TurnCount         int
-	EachTurnEvoCount  int //本回合进化过的次数
+	TurnCount         int `json:"-"`
+	EachTurnEvoCount  int `json:"-"` //本回合进化过的次数
 }
 
 func NewGame(players []*Player) *Game {
@@ -192,10 +191,8 @@ func (g *Game) getFirstTurn() *TurnChain {
 
 func (g *Game) onTurnActive() {
 	area := g.PlayerAreas[g.CurrentPlayer.Session.ID]
-	for _, monster := range area.Field {
-		monster.Sleep = false
-	}
-	for _, monster := range area.Field2 {
+	field := append(area.Field, area.Field2...)
+	for _, monster := range field {
 		monster.Sleep = false
 	}
 	g.broadcastGameInfo()
@@ -217,6 +214,7 @@ func (g *Game) Draw(p *Player, n int) {
 }
 
 func (g *Game) onTurnBorn() {
+	log.Printf("player %d -- turn born", g.CurrentPlayer.Session.ID)
 	area := g.PlayerAreas[g.CurrentPlayer.Session.ID]
 	if len(area.Egg) == 0 {
 		return
@@ -234,18 +232,38 @@ func (g *Game) onTurnBorn() {
 }
 
 func (g *Game) onTurnMain() {
+	log.Printf("player %d -- turn main", g.CurrentPlayer.Session.ID)
+	g.CurrentPlayer.Session.Send("game:turn-main", nil)
 	for {
 		nextTurn := g.waitForAction(g.CurrentPlayer)
 		if nextTurn {
+			break
+		}
+		if g.gameEnd {
 			break
 		}
 	}
 }
 
 func (g *Game) onTurnEnd() {
+	g.resetCount()
+	g.CurrentPlayer = g.CurrentPlayer.Opponent
+	g.broadcastGameInfo()
+
+}
+
+func (g *Game) resetCount() {
 	g.TurnCount++
 	g.EachTurnEvoCount = 0
-	g.CurrentPlayer = g.CurrentPlayer.Opponent
+	area := g.PlayerAreas[g.CurrentPlayer.Session.ID]
+	field := append(area.Field, area.Field2...)
+	for _, monster := range field {
+		for _, card := range monster.List {
+			for _, effect := range card.EffectList {
+				effect.TiggerCount = 0
+			}
+		}
+	}
 }
 
 func (g *Game) waitForAction(p *Player) (nextTurn bool) {
@@ -260,6 +278,7 @@ func (g *Game) waitForAction(p *Player) (nextTurn bool) {
 	case <-g.EndChan:
 		g.gameEnd = true
 	case <-time.After(233 * time.Second):
+		nextTurn = true
 	}
 	g.OperationPlayer = nil
 	return
@@ -365,7 +384,8 @@ func (g *Game) onActionAttack() {
 func (g *Game) processEffect(activeTime string, triggerMonster *MonsterCard) {
 	for _, p := range g.Players {
 		area := g.PlayerAreas[p.Session.ID]
-		for _, monster := range area.Field {
+		field := append(area.Field, area.Field2...)
+		for _, monster := range field {
 			if triggerMonster != nil && triggerMonster != monster {
 				continue
 			}

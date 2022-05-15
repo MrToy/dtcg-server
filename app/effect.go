@@ -50,6 +50,7 @@ type CardEffect struct {
 	ActiveTime      string                       //触发时点 attack, defend, draw, discard, play, evolve
 	Action          func(ctx *CardEffectContext) `json:"-"`
 	CreateTurnCount int                          //创建该效果的回合数
+	TiggerCount     int                          //每回合触发该效果的次数. 需要的时候手动增加，回合结束时重置
 }
 
 type CardEffectManager struct {
@@ -93,11 +94,14 @@ func NewCardEffectManager() *CardEffectManager {
 		},
 	})
 
-	//TODO 一回合一次
 	m.RegistEffect("BT1-003", CardEffect{
 		IsEvoSource: true,
 		ActiveTime:  "attack",
 		Action: func(ctx *CardEffectContext) {
+			if ctx.Effect.TiggerCount >= 1 {
+				return
+			}
+			ctx.Effect.TiggerCount++
 			count := ctx.GetOpponentEvoSourceMonsterCount()
 			if count == 0 {
 				ctx.Game.Draw(ctx.Belong, 1)

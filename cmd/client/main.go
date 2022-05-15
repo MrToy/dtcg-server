@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net"
-	"time"
 
 	"github.com/Mrtoy/dtcg-server/app"
 	"github.com/Mrtoy/dtcg-server/service"
@@ -43,23 +42,17 @@ func main() {
 		log.Println(res)
 		method := res["callback"].(string)
 		sess.Send(method, "1")
-		time.Sleep(1 * time.Second)
-		sess.Send("game:next-turn", nil)
 	})
 
 	sess.On("room:info", func(pack *service.Package, sess *service.Session) {
 		log.Println(pack.String())
 	})
+	gameState := &service.DMPState[app.Game]{}
 
 	sess.On("game:start", func(pack *service.Package, sess *service.Session) {
+		gameState = &service.DMPState[app.Game]{}
+	})
 
-	})
-	sess.On("game:current-change", func(pack *service.Package, sess *service.Session) {
-		var res map[string]any
-		pack.Unmarshal(&res)
-		log.Println(res)
-	})
-	gameState := &service.DMPState[app.Game]{}
 	sess.On("game:info-diff", func(pack *service.Package, sess *service.Session) {
 		gameState.Update(pack.String())
 		log.Println(gameState.State)
@@ -67,7 +60,9 @@ func main() {
 	sess.On("game:end", func(pack *service.Package, sess *service.Session) {
 		sess.Send("room:join-solo", nil)
 	})
-
+	sess.On("game:turn-main", func(pack *service.Package, sess *service.Session) {
+		sess.Send("game:next-turn", nil)
+	})
 	sess.Receive()
 }
 
